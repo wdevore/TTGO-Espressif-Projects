@@ -26,9 +26,9 @@ const int maxValue = 10;
 const int fadeAmount = 1; // how many points to fade the LED by
 unsigned long currentTime;
 unsigned long loopTime;
-unsigned char encoder_A;
-unsigned char encoder_B;
-unsigned char encoder_A_prev = 0;
+int encoder_A;
+int encoder_B;
+int encoder_A_prev = 0;
 
 void app_main(void)
 {
