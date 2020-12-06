@@ -12,9 +12,9 @@
 #define ESP_INTR_FLAG_DEFAULT 0
 
 int encoderPinAClk = 2;   // "A" Clock
-int encoderPinAData = 15; // "B" Data
+int encoderPinAData = 15; // "A" Data
 
-int encoderPinBClk = 13;  // "A" Clock
+int encoderPinBClk = 13;  // "B" Clock
 int encoderPinBData = 12; // "B" Data
 
 volatile int lastAEncoded = 0;
