@@ -1,4 +1,17 @@
 # TFT eSPI
+I am current using. Jeremy's library:
+https://github.com/jeremyjh/ESP32_TFT_library
+
+Notes:
+Double buffer looks like you populate a "**color_t *buf**" and then call *tftspi.c*' **send_data**(), where x1,y1 are always 0 and x2,y2 are width and height.
+
+Use *TFT_bmp_image*() as an example.
+
+The buffer is a "stretched" out 2D array into a 1D array. The width and height tell the display how to "cut" the 1D array into pixels lines. For double-buffer the width and height **IS** the width and height of the display.
+
+-------------------------------------------------------------------------------
+Everything below is old research.
+------------------------------
 
 ```
 https://github.com/loboris/ESP32_NEW_SPI_MASTER_EXAMPLE
