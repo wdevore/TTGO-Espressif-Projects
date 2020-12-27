@@ -124,45 +124,6 @@ void Display::init(void)
   TFT_setFont(DEFAULT_FONT, NULL);
 }
 
-void Display::drawHeader(std::string text)
-{
-  TFT_resetclipwin();
-
-  tft_fg = TFT_YELLOW;
-  // tft_bg = (color_t){64, 64, 64};
-  tft_bg = TFT_BLACK;
-
-  if (tft_width < 240)
-    TFT_setFont(DEF_SMALL_FONT, NULL);
-  else
-    TFT_setFont(DEFAULT_FONT, NULL);
-
-  TFT_fillRect(0, 0, tft_width - 1, TFT_getfontheight() + 8, tft_bg);
-  TFT_drawRect(0, 0, tft_width - 1, TFT_getfontheight() + 8, TFT_CYAN);
-
-  // TFT_fillRect(0, tft_height - TFT_getfontheight() - 9, tft_width - 1, TFT_getfontheight() + 8, tft_bg);
-  // TFT_drawRect(0, tft_height - TFT_getfontheight() - 9, tft_width - 1, TFT_getfontheight() + 8, TFT_CYAN);
-
-  TFT_print(text.c_str(), CENTER, 4);
-}
-
-void Display::drawSplash(void)
-{
-  drawHeader("Draw line DEMO");
-
-  TFT_setclipwin(0, TFT_getfontheight() + 9, tft_width - 1, tft_height - TFT_getfontheight() - 10);
-
-  TFT_setFont(COMIC24_FONT, NULL);
-  int tempy = TFT_getfontheight() + 4;
-
-  tft_fg = TFT_ORANGE;
-  TFT_print("ESP32", CENTER, (tft_dispWin.y2 - tft_dispWin.y1) / 2 - tempy);
-  TFT_setFont(UBUNTU16_FONT, NULL);
-
-  tft_fg = TFT_CYAN;
-  TFT_print("Demo", CENTER, LASTY + tempy);
-}
-
 void Display::reset(void)
 {
   TFT_resetclipwin();
@@ -171,50 +132,31 @@ void Display::reset(void)
   tft_image_debug = 0;
   tft_bg = TFT_BLACK;
 
-  std::cout << "color_t size: " << sizeof(color_t) << std::endl;
-
   // -----------------------------------------------------------
   // Allocate color buffer for rendering to.
   // -----------------------------------------------------------
-  colorBufSize = width * height * sizeof(color_t);
+  colorBufArea = width * height;
+  colorBufSize = colorBufArea * sizeof(color_t);
   colorBuf = (color_t *)heap_caps_malloc(colorBufSize, MALLOC_CAP_DMA);
 
-  // -----------------------------------------------------------
-  // Allocate back buffer for rendering to.
-  // -----------------------------------------------------------
-  backArea = width * height;
-  backSize = backArea * sizeof(color_t);
-
-  backBuf = (color_t *)heap_caps_malloc(backSize, MALLOC_CAP_DMA);
-
-  if (backBuf == NULL)
+  if (colorBuf == NULL)
   {
-    std::cout << "Unable to allocate back buffer" << std::endl;
+    std::cout << "Unable to allocate color buffer" << std::endl;
     exit(10);
   }
 
-  std::cout << "Back buffer area: " << backArea << std::endl;
-  std::cout << "Back buffer of size: " << backSize << std::endl;
+  std::cout << "Color buffer area: " << colorBufArea << std::endl;
+  std::cout << "Color buffer size: " << colorBufSize << std::endl;
+}
 
-  // -----------------------------------------------------------
-  // Allocate display buffer for blitting to display
-  // -----------------------------------------------------------
-  dispWidth = 67;  //int(width / 2);
-  dispHeight = 67; //int(height / 2);
-  dispArea = dispWidth * dispHeight;
-  dispSize = dispArea * sizeof(color_t);
+int Display::Width()
+{
+  return width;
+}
 
-  dispBuf = (color_t *)heap_caps_malloc(dispSize, MALLOC_CAP_DMA);
-
-  if (dispBuf == NULL)
-  {
-    std::cout << "Unable to allocate display buffer" << std::endl;
-    exit(10);
-  }
-
-  std::cout << "Display buffer WxH: " << dispWidth << "x" << dispHeight << std::endl;
-  std::cout << "Display buffer area: " << dispArea << std::endl;
-  std::cout << "Display buffer of size: " << dispSize << std::endl;
+int Display::Height()
+{
+  return height;
 }
 
 void Display::setClearColor(color_t color)
@@ -224,28 +166,10 @@ void Display::setClearColor(color_t color)
 
 void Display::clear()
 {
-  // TFT_fillScreen(clearColor);
-
-  int c = 255;
-  for (int row = 0; row < height; row++)
+  for (int i = 0; i <= colorBufArea; i++)
   {
-    for (int col = 0; col < width; col++)
-    {
-      int i = row * width + col;
-      backBuf[i].r = c;
-      backBuf[i].g = c;
-      backBuf[i].b = c;
-    }
-    c -= 5;
-    if (c <= 0)
-    {
-      c = 255;
-    }
+    colorBuf[i] = clearColor;
   }
-  // for (int i = 0; i < backArea; i++)
-  // {
-  // }
-  // memset(buf, 0, len*sizeof(color_t));
 }
 
 void Display::setDrawColor(color_t color)
@@ -318,21 +242,11 @@ void Display::drawLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1)
   TFT_drawLine(x0, y0, x1, y1, drawColor); // Direct write api
 }
 
-// void Display::drawPixel(int16_t x, int16_t y)
-// {
-//   TFT_drawPixel(x, y, drawColor, 1);
-// }
-
 void Display::drawPixel(int16_t x, int16_t y)
 {
   if (disp_select() != ESP_OK)
     return;
 
-  // std::cout<< "--------------------------"<<std::endl;
-  // std::cout << "(gpio_num_t)PIN_NUM_DC :"<<(gpio_num_t)PIN_NUM_DC << std::endl;
-
-  // if (!(tft_disp_spi->cfg.flags & LB_SPI_DEVICE_HALFDUPLEX))
-  //   return;
   uint32_t wd = 0;
 
   taskDISABLE_INTERRUPTS();
@@ -364,6 +278,7 @@ void Display::drawPixel(int16_t x, int16_t y)
     ; // Wait for SPI bus ready
 
   taskENABLE_INTERRUPTS();
+
   disp_deselect();
 }
 
@@ -371,9 +286,6 @@ void Display::fillDisplay()
 {
   if (disp_select() != ESP_OK)
     return;
-
-  // std::cout<< "--------------------------"<<std::endl;
-  // std::cout << "(gpio_num_t)PIN_NUM_DC :"<<(gpio_num_t)PIN_NUM_DC << std::endl;
 
   uint32_t wd = 0;
 
@@ -398,6 +310,7 @@ void Display::fillDisplay()
 
   tft_disp_spi->host->hw->data_buf[0] = wd;
   tft_disp_spi->host->hw->mosi_dlen.usr_mosi_dbitlen = 23;
+
   for (int i = 0; i <= width * height; i++)
   {
     tft_disp_spi->host->hw->cmd.usr = 1; // Start transfer
@@ -406,16 +319,32 @@ void Display::fillDisplay()
   }
 
   taskENABLE_INTERRUPTS();
+
   disp_deselect();
+}
+
+void Display::setPixel(int x, int y)
+{
+  // x = column, y = row
+  colorBuf[x + y * width] = drawColor;
+}
+
+void Display::setRect(int x, int y, int w, int h)
+{
+  // x = column, y = row
+  for (int row = y; row < y+h; row++)
+  {
+    for (int col = x; col < x+w; col++)
+    {
+      colorBuf[col + row * width] = drawColor;
+    }
+  }
 }
 
 void Display::drawSqr(int16_t x, int16_t y, int16_t w, int16_t h)
 {
   if (disp_select() != ESP_OK)
     return;
-
-  // std::cout<< "--------------------------"<<std::endl;
-  // std::cout << "(gpio_num_t)PIN_NUM_DC :"<<(gpio_num_t)PIN_NUM_DC << std::endl;
 
   uint32_t wd = 0;
 
@@ -443,6 +372,7 @@ void Display::drawSqr(int16_t x, int16_t y, int16_t w, int16_t h)
 
   tft_disp_spi->host->hw->data_buf[0] = wd;
   tft_disp_spi->host->hw->mosi_dlen.usr_mosi_dbitlen = 23;
+
   for (int i = 0; i <= w * h; i++)
   {
     tft_disp_spi->host->hw->cmd.usr = 1; // Start transfer
@@ -451,81 +381,45 @@ void Display::drawSqr(int16_t x, int16_t y, int16_t w, int16_t h)
   }
 
   taskENABLE_INTERRUPTS();
+
   disp_deselect();
 }
 
 void Display::blit(void)
 {
-  // std::cout << "Sending data..." << std::endl;
-
-  void *backPtr = backBuf;
-  std::cout << "backBuf: " << backBuf << std::endl;
-  // std::cout << "backPtr: " << backPtr << std::endl;
-
-  memcpy(dispBuf, backPtr, dispSize);
-
-  int x = 0;
-  int y = 0;
-
   if (disp_select() != ESP_OK)
     return;
-  send_data(
-      x + tft_dispWin.x1, y + tft_dispWin.y1,
-      x + dispWidth + tft_dispWin.x1, y + dispHeight + tft_dispWin.y1,
-      dispArea - 1,
-      dispBuf);
-  disp_deselect();
-}
 
-void Display::blit2(void)
-{
-  // std::cout << "Sending data..." << std::endl;
+  taskDISABLE_INTERRUPTS();
 
-  // for (int i = 0; i < backArea; i++)
-  // {
-  //   backBuf[i].r = 255;
-  //   backBuf[i].g = 0;
-  //   backBuf[i].b = 0;
-  // }
+  setAddrWindow(
+      tft_dispWin.x1, tft_dispWin.x2,
+      tft_dispWin.y1, tft_dispWin.y2);
 
-  void *backPtr = backBuf;
-  std::cout << "backBuf: " << backBuf << std::endl;
-  // std::cout << "backPtr: " << backPtr << std::endl;
+  // Send RAM WRITE command
+  gpio_set_level((gpio_num_t)PIN_NUM_DC, 0);
 
-  memcpy(dispBuf, backPtr, dispSize);
+  tft_disp_spi->host->hw->data_buf[0] = (uint32_t)TFT_RAMWR;
+  tft_disp_spi->host->hw->mosi_dlen.usr_mosi_dbitlen = 7;
+  tft_disp_spi->host->hw->cmd.usr = 1; // Start transfer
+  while (tft_disp_spi->host->hw->cmd.usr)
+    ; // Wait for SPI bus ready
 
-  int x = 0;
-  int y = 0;
+  // Set DC to 1 (data mode);
+  gpio_set_level((gpio_num_t)PIN_NUM_DC, 1);
 
-  if (disp_select() != ESP_OK)
-    return;
-  send_data(
-      x + tft_dispWin.x1, y + tft_dispWin.y1,
-      x + dispWidth + tft_dispWin.x1, y + dispHeight + tft_dispWin.y1,
-      dispArea - 1,
-      dispBuf);
-  disp_deselect();
+  tft_disp_spi->host->hw->mosi_dlen.usr_mosi_dbitlen = 23;
 
-  // --------------------------------------------------------
-  // for (int i = 0; i < backArea; i++)
-  // {
-  //   backBuf[i].r = 0;
-  //   backBuf[i].g = 255;
-  //   backBuf[i].b = 0;
-  // }
+  for (int i = 0; i < colorBufArea; i++)
+  {
+    tft_disp_spi->host->hw->data_buf[0] = (uint32_t)colorBuf[i].r | (uint32_t)colorBuf[i].g << 8 | (uint32_t)colorBuf[i].b << 16;
 
-  backPtr = backBuf + dispSize;
-  memcpy(dispBuf, backPtr, dispSize);
+    tft_disp_spi->host->hw->cmd.usr = 1; // Start transfer
+    while (tft_disp_spi->host->hw->cmd.usr)
+      ; // Wait for SPI bus ready
+  }
 
-  x = dispWidth; //width / 2;
-  // y = width / 2;
+  taskENABLE_INTERRUPTS();
 
-  if (disp_select() != ESP_OK)
-    return;
-  send_data(
-      x + tft_dispWin.x1, y + tft_dispWin.y1,
-      x + dispWidth + tft_dispWin.x1, y + dispHeight + tft_dispWin.y1,
-      dispArea - 1,
-      dispBuf);
   disp_deselect();
 }
