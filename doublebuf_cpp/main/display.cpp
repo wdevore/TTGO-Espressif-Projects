@@ -1,6 +1,8 @@
 #include <iostream>
+#include <cstring>
 
 #include "freertos/FreeRTOS.h"
+#include "driver/gpio.h"
 
 #include "../includes/display.h"
 
@@ -171,22 +173,42 @@ void Display::reset(void)
 
   std::cout << "color_t size: " << sizeof(color_t) << std::endl;
 
-  // Allocate back buffer for bliting to display
-  width = 30;
-  height = 30;
-  bufArea = width * height;
-  bufSize = bufArea * sizeof(color_t);
+  // -----------------------------------------------------------
+  // Allocate back buffer for rendering to.
+  // -----------------------------------------------------------
+  backArea = width * height;
+  backSize = backArea * sizeof(color_t);
 
-  backBuf = (color_t *)heap_caps_malloc(bufSize, MALLOC_CAP_DMA);
+  backBuf = (color_t *)heap_caps_malloc(backSize, MALLOC_CAP_DMA);
 
   if (backBuf == NULL)
   {
-    std::cout << "Unable to allocate backbuffer" << std::endl;
+    std::cout << "Unable to allocate back buffer" << std::endl;
     exit(10);
   }
 
-  std::cout << "Allocated back buffer area: " << bufArea << std::endl;
-  std::cout << "Allocated back buffer of size: " << bufSize << std::endl;
+  std::cout << "Back buffer area: " << backArea << std::endl;
+  std::cout << "Back buffer of size: " << backSize << std::endl;
+
+  // -----------------------------------------------------------
+  // Allocate display buffer for blitting to display
+  // -----------------------------------------------------------
+  dispWidth = 67;  //int(width / 2);
+  dispHeight = 67; //int(height / 2);
+  dispArea = dispWidth * dispHeight;
+  dispSize = dispArea * sizeof(color_t);
+
+  dispBuf = (color_t *)heap_caps_malloc(dispSize, MALLOC_CAP_DMA);
+
+  if (dispBuf == NULL)
+  {
+    std::cout << "Unable to allocate display buffer" << std::endl;
+    exit(10);
+  }
+
+  std::cout << "Display buffer WxH: " << dispWidth << "x" << dispHeight << std::endl;
+  std::cout << "Display buffer area: " << dispArea << std::endl;
+  std::cout << "Display buffer of size: " << dispSize << std::endl;
 }
 
 void Display::setClearColor(color_t color)
@@ -198,12 +220,25 @@ void Display::clear()
 {
   // TFT_fillScreen(clearColor);
 
-  for (int i = 0; i < bufArea; i++)
+  int c = 255;
+  for (int row = 0; row < height; row++)
   {
-    backBuf[i].r = clearColor.r;
-    backBuf[i].g = clearColor.g;
-    backBuf[i].b = clearColor.b;
+    for (int col = 0; col < width; col++)
+    {
+      int i = row * width + col;
+      backBuf[i].r = c;
+      backBuf[i].g = c;
+      backBuf[i].b = c;
+    }
+    c -= 5;
+    if (c <= 0)
+    {
+      c = 255;
+    }
   }
+  // for (int i = 0; i < backArea; i++)
+  // {
+  // }
   // memset(buf, 0, len*sizeof(color_t));
 }
 
@@ -217,43 +252,281 @@ void Display::setDrawColor(uint8_t r, uint8_t g, uint8_t b)
   drawColor = {r, g, b};
 }
 
+void Display::setAddrWindow(uint16_t x1, uint16_t x2, uint16_t y1, uint16_t y2)
+{
+  uint32_t wd;
+
+  // taskDISABLE_INTERRUPTS();
+  // Wait for SPI bus ready
+  while (tft_disp_spi->host->hw->cmd.usr)
+    ;
+  gpio_set_level((gpio_num_t)PIN_NUM_DC, 0);
+
+  tft_disp_spi->host->hw->data_buf[0] = (uint32_t)TFT_CASET;
+  tft_disp_spi->host->hw->user.usr_mosi_highpart = 0;
+  tft_disp_spi->host->hw->mosi_dlen.usr_mosi_dbitlen = 7;
+  tft_disp_spi->host->hw->user.usr_mosi = 1;
+  tft_disp_spi->host->hw->miso_dlen.usr_miso_dbitlen = 0;
+  tft_disp_spi->host->hw->user.usr_miso = 0;
+
+  tft_disp_spi->host->hw->cmd.usr = 1; // Start transfer
+
+  wd = (uint32_t)(x1 >> 8);
+  wd |= (uint32_t)(x1 & 0xff) << 8;
+  wd |= (uint32_t)(x2 >> 8) << 16;
+  wd |= (uint32_t)(x2 & 0xff) << 24;
+
+  while (tft_disp_spi->host->hw->cmd.usr)
+    ; // wait transfer end
+  gpio_set_level((gpio_num_t)PIN_NUM_DC, 1);
+  tft_disp_spi->host->hw->data_buf[0] = wd;
+  tft_disp_spi->host->hw->mosi_dlen.usr_mosi_dbitlen = 31;
+  tft_disp_spi->host->hw->cmd.usr = 1; // Start transfer
+
+  while (tft_disp_spi->host->hw->cmd.usr)
+    ;
+  gpio_set_level((gpio_num_t)PIN_NUM_DC, 0);
+  tft_disp_spi->host->hw->data_buf[0] = (uint32_t)TFT_PASET;
+  tft_disp_spi->host->hw->mosi_dlen.usr_mosi_dbitlen = 7;
+  tft_disp_spi->host->hw->cmd.usr = 1; // Start transfer
+
+  wd = (uint32_t)(y1 >> 8);
+  wd |= (uint32_t)(y1 & 0xff) << 8;
+  wd |= (uint32_t)(y2 >> 8) << 16;
+  wd |= (uint32_t)(y2 & 0xff) << 24;
+
+  while (tft_disp_spi->host->hw->cmd.usr)
+    ;
+  gpio_set_level((gpio_num_t)PIN_NUM_DC, 1);
+
+  tft_disp_spi->host->hw->data_buf[0] = wd;
+  tft_disp_spi->host->hw->mosi_dlen.usr_mosi_dbitlen = 31;
+  tft_disp_spi->host->hw->cmd.usr = 1; // Start transfer
+  while (tft_disp_spi->host->hw->cmd.usr)
+    ;
+  // taskENABLE_INTERRUPTS();
+}
+
 void Display::drawLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1)
 {
   TFT_drawLine(x0, y0, x1, y1, drawColor); // Direct write api
 }
 
-void Display::blit(void)
+// void Display::drawPixel(int16_t x, int16_t y)
+// {
+//   TFT_drawPixel(x, y, drawColor, 1);
+// }
+
+void Display::drawPixel(int16_t x, int16_t y)
 {
   if (disp_select() != ESP_OK)
     return;
 
-  std::cout << "Sending data..." << std::endl;
+  // std::cout<< "--------------------------"<<std::endl;
+  // std::cout << "(gpio_num_t)PIN_NUM_DC :"<<(gpio_num_t)PIN_NUM_DC << std::endl;
 
-  int x = 10;
-  int y = 100;
-  for (int i = 0; i < bufArea; i++)
+  // if (!(tft_disp_spi->cfg.flags & LB_SPI_DEVICE_HALFDUPLEX))
+  //   return;
+  uint32_t wd = 0;
+
+  taskDISABLE_INTERRUPTS();
+
+  x += tft_dispWin.x1;
+  y += tft_dispWin.y1;
+
+  setAddrWindow(x, x + 1, y, y + 1);
+
+  // Send RAM WRITE command
+  gpio_set_level((gpio_num_t)PIN_NUM_DC, 0);
+  tft_disp_spi->host->hw->data_buf[0] = (uint32_t)TFT_RAMWR;
+  tft_disp_spi->host->hw->mosi_dlen.usr_mosi_dbitlen = 7;
+  tft_disp_spi->host->hw->cmd.usr = 1; // Start transfer
+  while (tft_disp_spi->host->hw->cmd.usr)
+    ; // Wait for SPI bus ready
+
+  wd = (uint32_t)drawColor.r;
+  wd |= (uint32_t)drawColor.g << 8;
+  wd |= (uint32_t)drawColor.b << 16;
+
+  // Set DC to 1 (data mode);
+  gpio_set_level((gpio_num_t)PIN_NUM_DC, 1);
+
+  tft_disp_spi->host->hw->data_buf[0] = wd;
+  tft_disp_spi->host->hw->mosi_dlen.usr_mosi_dbitlen = 23;
+  tft_disp_spi->host->hw->cmd.usr = 1; // Start transfer
+  while (tft_disp_spi->host->hw->cmd.usr)
+    ; // Wait for SPI bus ready
+
+  taskENABLE_INTERRUPTS();
+  disp_deselect();
+}
+
+void Display::fillDisplay()
+{
+  if (disp_select() != ESP_OK)
+    return;
+
+  // std::cout<< "--------------------------"<<std::endl;
+  // std::cout << "(gpio_num_t)PIN_NUM_DC :"<<(gpio_num_t)PIN_NUM_DC << std::endl;
+
+  uint32_t wd = 0;
+
+  taskDISABLE_INTERRUPTS();
+
+  setAddrWindow(tft_dispWin.x1, tft_dispWin.x1 + (width - 1), tft_dispWin.y1, tft_dispWin.y1 + (height - 1));
+
+  // Send RAM WRITE command
+  gpio_set_level((gpio_num_t)PIN_NUM_DC, 0);
+  tft_disp_spi->host->hw->data_buf[0] = (uint32_t)TFT_RAMWR;
+  tft_disp_spi->host->hw->mosi_dlen.usr_mosi_dbitlen = 7;
+  tft_disp_spi->host->hw->cmd.usr = 1; // Start transfer
+  while (tft_disp_spi->host->hw->cmd.usr)
+    ; // Wait for SPI bus ready
+
+  wd = (uint32_t)drawColor.r;
+  wd |= (uint32_t)drawColor.g << 8;
+  wd |= (uint32_t)drawColor.b << 16;
+
+  // Set DC to 1 (data mode);
+  gpio_set_level((gpio_num_t)PIN_NUM_DC, 1);
+
+  tft_disp_spi->host->hw->data_buf[0] = wd;
+  tft_disp_spi->host->hw->mosi_dlen.usr_mosi_dbitlen = 23;
+  for (int i = 0; i <= width * height; i++)
   {
-    backBuf[i].r = 255;
-    backBuf[i].g = 0;
-    backBuf[i].b = 0;
+    tft_disp_spi->host->hw->cmd.usr = 1; // Start transfer
+    while (tft_disp_spi->host->hw->cmd.usr)
+      ; // Wait for SPI bus ready
   }
 
-  send_data(x + tft_dispWin.x1, y + tft_dispWin.y1, x + width + tft_dispWin.x1, y + height + tft_dispWin.y1, bufArea, backBuf);
+  taskENABLE_INTERRUPTS();
   disp_deselect();
+}
 
-  // if (disp_select() != ESP_OK)
-  //   return;
+void Display::drawSqr(int16_t x, int16_t y, int16_t w, int16_t h)
+{
+  if (disp_select() != ESP_OK)
+    return;
 
-  // for (int i = 0; i < bufArea; i++)
+  // std::cout<< "--------------------------"<<std::endl;
+  // std::cout << "(gpio_num_t)PIN_NUM_DC :"<<(gpio_num_t)PIN_NUM_DC << std::endl;
+
+  uint32_t wd = 0;
+
+  taskDISABLE_INTERRUPTS();
+
+  x += tft_dispWin.x1;
+  y += tft_dispWin.y1;
+
+  setAddrWindow(x, x + (w - 1), y, y + (h - 1));
+
+  // Send RAM WRITE command
+  gpio_set_level((gpio_num_t)PIN_NUM_DC, 0);
+  tft_disp_spi->host->hw->data_buf[0] = (uint32_t)TFT_RAMWR;
+  tft_disp_spi->host->hw->mosi_dlen.usr_mosi_dbitlen = 7;
+  tft_disp_spi->host->hw->cmd.usr = 1; // Start transfer
+  while (tft_disp_spi->host->hw->cmd.usr)
+    ; // Wait for SPI bus ready
+
+  wd = (uint32_t)drawColor.r;
+  wd |= (uint32_t)drawColor.g << 8;
+  wd |= (uint32_t)drawColor.b << 16;
+
+  // Set DC to 1 (data mode);
+  gpio_set_level((gpio_num_t)PIN_NUM_DC, 1);
+
+  tft_disp_spi->host->hw->data_buf[0] = wd;
+  tft_disp_spi->host->hw->mosi_dlen.usr_mosi_dbitlen = 23;
+  for (int i = 0; i <= w * h; i++)
+  {
+    tft_disp_spi->host->hw->cmd.usr = 1; // Start transfer
+    while (tft_disp_spi->host->hw->cmd.usr)
+      ; // Wait for SPI bus ready
+  }
+
+  taskENABLE_INTERRUPTS();
+  disp_deselect();
+}
+
+void Display::blit2(void)
+{
+  // std::cout << "Sending data..." << std::endl;
+
+  // for (int i = 0; i < backArea; i++)
   // {
-  //   backBuf[i].r = 0;
+  //   backBuf[i].r = 255;
   //   backBuf[i].g = 0;
-  //   backBuf[i].b = 255;
+  //   backBuf[i].b = 0;
   // }
 
-  // y = 135;
-  // send_data(x + tft_dispWin.x1, y + tft_dispWin.y1, x + width + tft_dispWin.x1, y + height + tft_dispWin.y1, bufArea, backBuf);
-  // std::cout << "Sent" << std::endl;
+  void *backPtr = backBuf;
+  std::cout << "backBuf: " << backBuf << std::endl;
+  // std::cout << "backPtr: " << backPtr << std::endl;
 
-  // disp_deselect();
+  memcpy(dispBuf, backPtr, dispSize);
+
+  int x = 0;
+  int y = 0;
+
+  if (disp_select() != ESP_OK)
+    return;
+  send_data(
+      x + tft_dispWin.x1, y + tft_dispWin.y1,
+      x + dispWidth + tft_dispWin.x1, y + dispHeight + tft_dispWin.y1,
+      dispArea - 1,
+      dispBuf);
+  disp_deselect();
+}
+
+void Display::blit(void)
+{
+  // std::cout << "Sending data..." << std::endl;
+
+  // for (int i = 0; i < backArea; i++)
+  // {
+  //   backBuf[i].r = 255;
+  //   backBuf[i].g = 0;
+  //   backBuf[i].b = 0;
+  // }
+
+  void *backPtr = backBuf;
+  std::cout << "backBuf: " << backBuf << std::endl;
+  // std::cout << "backPtr: " << backPtr << std::endl;
+
+  memcpy(dispBuf, backPtr, dispSize);
+
+  int x = 0;
+  int y = 0;
+
+  if (disp_select() != ESP_OK)
+    return;
+  send_data(
+      x + tft_dispWin.x1, y + tft_dispWin.y1,
+      x + dispWidth + tft_dispWin.x1, y + dispHeight + tft_dispWin.y1,
+      dispArea - 1,
+      dispBuf);
+  disp_deselect();
+
+  // --------------------------------------------------------
+  // for (int i = 0; i < backArea; i++)
+  // {
+  //   backBuf[i].r = 0;
+  //   backBuf[i].g = 255;
+  //   backBuf[i].b = 0;
+  // }
+
+  backPtr = backBuf + dispSize;
+  memcpy(dispBuf, backPtr, dispSize);
+
+  x = dispWidth; //width / 2;
+  // y = width / 2;
+
+  if (disp_select() != ESP_OK)
+    return;
+  send_data(
+      x + tft_dispWin.x1, y + tft_dispWin.y1,
+      x + dispWidth + tft_dispWin.x1, y + dispHeight + tft_dispWin.y1,
+      dispArea - 1,
+      dispBuf);
+  disp_deselect();
 }

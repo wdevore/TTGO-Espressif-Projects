@@ -40,10 +40,25 @@ void app_main(void)
 
     // vTaskDelay(1000 / portTICK_RATE_MS);
 
-    std::cout << "Blitting..." << std::endl;
-    disp.blit();
-    std::cout << "Blitted" << std::endl;
+    // std::cout << "Blitting..." << std::endl;
+    // disp.blit2();
+    // std::cout << "Blitted" << std::endl;
 
-    disp.setDrawColor(255, 0, 0);
+    disp.setDrawColor(TFT_DARKGREY);
+    int w = 135-1;
+    int h = 240-1;
+    int x = 0;
+    int y = 0;
+    disp.fillDisplay();
+
+    disp.setDrawColor(TFT_WHITE);
+    for (int i = 0; i < w; i++)
+    {
+        disp.drawPixel(x, y);
+        x++;
+        y++;
+    }
+
+    disp.setDrawColor(255, 0, 255);
     disp.drawLine(10, 120, 120, 120);
 }

@@ -17,9 +17,15 @@ public:
   // length = width * height
   // uint8_t, uint8_t,...
   color_t *backBuf;
-  int bufArea;
-  int bufSize;
+  int backArea;
+  int backSize;
   
+  // Display buffer
+  color_t *dispBuf;
+  int dispArea;
+  int dispSize;
+  int dispWidth , dispHeight;
+
   void init(void);
 
   void drawHeader(std::string text);
@@ -28,10 +34,15 @@ public:
 
   void setClearColor(color_t color);
   void clear();
+  void fillDisplay();
 
+  void setAddrWindow(uint16_t x1, uint16_t x2, uint16_t y1, uint16_t y2);
   void setDrawColor(uint8_t r, uint8_t g, uint8_t b);
   void setDrawColor(color_t color);
   void drawLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1);
+  void drawPixel(int16_t x, int16_t y);
+  void drawSqr(int16_t x, int16_t y, int16_t w, int16_t h);
 
   void blit(void);
+  void blit2(void);
 };
