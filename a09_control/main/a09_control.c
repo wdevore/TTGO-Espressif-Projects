@@ -38,6 +38,9 @@
 
 #define RESET_GPIO 26       // Pin 22 on FPGA
 #define CLOCK_GPIO 27       // Pin 21 on FPGA
+#define SELECT0_GPIO 25     // Pin 19 on FPGA   LSB bit
+#define SELECT1_GPIO 33     // Pin 20 on FPGA   MSB bit
+#define PC_INC_GPIO 32      // Pin 18 on FPGA
 
 static void echo_task(void *arg)
 {
@@ -52,6 +55,7 @@ static void echo_task(void *arg)
         .source_clk = UART_SCLK_APB,
     };
     int intr_alloc_flags = 0;
+    bool pc_inc = false;
 
 #if CONFIG_UART_ISR_IN_IRAM
     intr_alloc_flags = ESP_INTR_FLAG_IRAM;
@@ -71,21 +75,35 @@ static void echo_task(void *arg)
        functions.)
     */
     gpio_reset_pin(RESET_GPIO);
-    // Set the GPIO as a push/pull output
-    gpio_set_direction(RESET_GPIO, GPIO_MODE_OUTPUT);
+    gpio_set_direction(RESET_GPIO, GPIO_MODE_OUTPUT);// Set the GPIO as a push/pull output
 
     gpio_reset_pin(CLOCK_GPIO);
-    // Set the GPIO as a push/pull output
     gpio_set_direction(CLOCK_GPIO, GPIO_MODE_OUTPUT);
+
+    gpio_reset_pin(SELECT0_GPIO);
+    gpio_set_direction(SELECT0_GPIO, GPIO_MODE_OUTPUT);
+    gpio_reset_pin(SELECT1_GPIO);
+    gpio_set_direction(SELECT1_GPIO, GPIO_MODE_OUTPUT);
+
+    gpio_reset_pin(PC_INC_GPIO);
+    gpio_set_direction(PC_INC_GPIO, GPIO_MODE_OUTPUT);
 
     vTaskDelay(1000 / portTICK_PERIOD_MS);
 
     gpio_set_level(RESET_GPIO, 1);
     gpio_set_level(CLOCK_GPIO, 0);
 
+    gpio_set_level(SELECT0_GPIO, 0);
+    gpio_set_level(SELECT1_GPIO, 0);
+
+    // Default to PC Inc disabled
+    gpio_set_level(PC_INC_GPIO, 1);
+
     printf("\n\nReady:\n");
     printf("'x' = Clock\n");
     printf("'z' = Reset\n");
+    printf("'a,s,d,f' = Select (00,01,10,11)\n");
+    printf("'c' = Toggle PC Inc\n");
 
     while (1) {
         // Read data from the UART
@@ -113,6 +131,53 @@ static void echo_task(void *arg)
                 gpio_set_level(CLOCK_GPIO, 1);
                 vTaskDelay(10 / portTICK_PERIOD_MS);
                 gpio_set_level(CLOCK_GPIO, 0);
+                break;
+            case 'a':
+                printf("Select 00\n");
+                gpio_set_level(SELECT0_GPIO, 0);
+                gpio_set_level(SELECT1_GPIO, 0);
+
+                gpio_set_level(CLOCK_GPIO, 1);
+                vTaskDelay(10 / portTICK_PERIOD_MS);
+                gpio_set_level(CLOCK_GPIO, 0);
+                break;
+            case 's':
+                printf("Select 01\n");
+                gpio_set_level(SELECT0_GPIO, 1);
+                gpio_set_level(SELECT1_GPIO, 0);
+
+                gpio_set_level(CLOCK_GPIO, 1);
+                vTaskDelay(10 / portTICK_PERIOD_MS);
+                gpio_set_level(CLOCK_GPIO, 0);
+                break;
+            case 'd':
+                printf("Select 10\n");
+                gpio_set_level(SELECT0_GPIO, 0);
+                gpio_set_level(SELECT1_GPIO, 1);
+
+                gpio_set_level(CLOCK_GPIO, 1);
+                vTaskDelay(10 / portTICK_PERIOD_MS);
+                gpio_set_level(CLOCK_GPIO, 0);
+                break;
+            case 'f':
+                printf("Select 11\n");
+                gpio_set_level(SELECT0_GPIO, 1);
+                gpio_set_level(SELECT1_GPIO, 1);
+
+                gpio_set_level(CLOCK_GPIO, 1);
+                vTaskDelay(10 / portTICK_PERIOD_MS);
+                gpio_set_level(CLOCK_GPIO, 0);
+                break;
+            case 'c':
+                pc_inc = !pc_inc;
+                if (pc_inc) {
+                    printf("PC Inc enabled\n");
+                    gpio_set_level(PC_INC_GPIO, 0);
+                } else {
+                    printf("PC Inc disabled\n");
+                    gpio_set_level(PC_INC_GPIO, 1);
+                }
+                break;
             default:
                 break;
             }
