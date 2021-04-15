@@ -24,10 +24,10 @@
 
 #define BUF_SIZE (1024)
 
-#define RESET_GPIO 26       // Pin 23 on FPGA
-#define CLOCK_GPIO 27       // Pin 22 on FPGA
+#define RESET_GPIO 26       // Pin 22 on FPGA
+#define CLOCK_GPIO 27       // Pin 21 on FPGA
 
-#define RUN_SEQCON_TASK 1
+#define RUN_CPU_TASK 1
 
 // Memory controls
 #define SELECT0_GPIO 25     // Pin 19 on FPGA
@@ -495,6 +495,121 @@ static void seqcon_task(void *arg)
 }
 #endif
 
+#ifdef RUN_CPU_TASK
+bool clockEnabled = false;
+
+static void clock_task(void *arg)
+{
+    for (;;) {
+        if (clockEnabled) {
+            gpio_set_level(CLOCK_GPIO, 1);
+            vTaskDelay(10 / portTICK_PERIOD_MS);
+            gpio_set_level(CLOCK_GPIO, 0);
+            vTaskDelay(10 / portTICK_PERIOD_MS);
+        }
+        vTaskDelay(10 / portTICK_PERIOD_MS);
+    }
+}
+
+static void cpu_task(void *arg)
+{
+    /* Configure parameters of an UART driver,
+     * communication pins and install the driver */
+    uart_config_t uart_config = {
+        .baud_rate = ECHO_UART_BAUD_RATE,
+        .data_bits = UART_DATA_8_BITS,
+        .parity    = UART_PARITY_DISABLE,
+        .stop_bits = UART_STOP_BITS_1,
+        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+        .source_clk = UART_SCLK_APB,
+    };
+    int intr_alloc_flags = 0;
+
+#if CONFIG_UART_ISR_IN_IRAM
+    intr_alloc_flags = ESP_INTR_FLAG_IRAM;
+#endif
+
+    ESP_ERROR_CHECK(uart_driver_install(ECHO_UART_PORT_NUM, BUF_SIZE * 2, 0, 0, NULL, intr_alloc_flags));
+    ESP_ERROR_CHECK(uart_param_config(ECHO_UART_PORT_NUM, &uart_config));
+    ESP_ERROR_CHECK(uart_set_pin(ECHO_UART_PORT_NUM, ECHO_TEST_TXD, ECHO_TEST_RXD, ECHO_TEST_RTS, ECHO_TEST_CTS));
+
+    // Configure a temporary buffer for the incoming data
+    uint8_t *data = (uint8_t *) malloc(BUF_SIZE);
+
+    /* Configure the IOMUX register for pad BLINK_GPIO (some pads are
+       muxed to GPIO on reset already, but some default to other
+       functions and need to be switched to GPIO. Consult the
+       Technical Reference for a list of pads and their default
+       functions.)
+    */
+    gpio_reset_pin(RESET_GPIO);
+    gpio_set_direction(RESET_GPIO, GPIO_MODE_OUTPUT);// Set the GPIO as a push/pull output
+
+    gpio_reset_pin(CLOCK_GPIO);
+    gpio_set_direction(CLOCK_GPIO, GPIO_MODE_OUTPUT);
+
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
+
+    gpio_set_level(RESET_GPIO, 1);
+    gpio_set_level(CLOCK_GPIO, 0);
+
+    printf("\n\nReady:\n");
+    printf("'x' = Clock\n");
+    printf("'z' = Reset\n");
+    printf("'c' = Toggle clock\n");
+
+    int clkCnt = 0;
+
+    while (1) {
+        // Read data from the UART
+        int len = uart_read_bytes(ECHO_UART_PORT_NUM, data, BUF_SIZE, 20 / portTICK_RATE_MS);
+        
+        if (len > 0) {
+            // printf("Len (%d)\n", len);
+            switch (*data)
+            {
+            case 'h':
+                printf("'x' = Clock\n");
+                printf("'z' = Reset\n");
+                printf("'c' = Toggle clock\n");
+                break;
+            case 'z':
+                // Reset is Active-low
+                gpio_set_level(RESET_GPIO, 0);
+
+                // Now toggle clock
+                gpio_set_level(CLOCK_GPIO, 1);
+                vTaskDelay(10 / portTICK_PERIOD_MS);
+                gpio_set_level(CLOCK_GPIO, 0);
+                clkCnt = 1;
+
+                // Deactivate Reset
+                gpio_set_level(RESET_GPIO, 1);
+
+                printf("Reset %d\n", clkCnt);
+                break;
+            case 'x':
+                clockEnabled = false;
+                gpio_set_level(CLOCK_GPIO, 1);
+                vTaskDelay(10 / portTICK_PERIOD_MS);
+                gpio_set_level(CLOCK_GPIO, 0);
+                clkCnt++;
+
+                printf("Clocked %d\n", clkCnt);
+                break;
+            case 'c':
+                clockEnabled = !clockEnabled;
+                printf("Clock enabled: %d\n", clockEnabled);
+                break;
+
+            default:
+                break;
+            }
+        }
+    }
+}
+#endif
+
 void app_main(void)
 {
 #ifdef RUN_MEMORY_TASK
@@ -507,5 +622,10 @@ void app_main(void)
 
 #ifdef RUN_SEQCON_TASK
     xTaskCreate(seqcon_task, "a_task", ECHO_TASK_STACK_SIZE, NULL, 10, NULL);
+#endif
+
+#ifdef RUN_CPU_TASK
+    xTaskCreate(clock_task, "clock_task", ECHO_TASK_STACK_SIZE, NULL, 10, NULL);
+    xTaskCreate(cpu_task, "a_task", ECHO_TASK_STACK_SIZE, NULL, 5, NULL);
 #endif
 }
