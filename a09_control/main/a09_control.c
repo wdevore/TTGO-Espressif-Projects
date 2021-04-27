@@ -502,12 +502,12 @@ static void clock_task(void *arg)
 {
     for (;;) {
         if (clockEnabled) {
-            gpio_set_level(CLOCK_GPIO, 1);
-            vTaskDelay(10 / portTICK_PERIOD_MS);
             gpio_set_level(CLOCK_GPIO, 0);
             vTaskDelay(10 / portTICK_PERIOD_MS);
-        }
-        vTaskDelay(10 / portTICK_PERIOD_MS);
+            gpio_set_level(CLOCK_GPIO, 1);
+            vTaskDelay(10 / portTICK_PERIOD_MS);
+        } else 
+            vTaskDelay(10 / portTICK_PERIOD_MS);
     }
 }
 
@@ -578,10 +578,11 @@ static void cpu_task(void *arg)
                 gpio_set_level(RESET_GPIO, 0);
 
                 // Now toggle clock
-                gpio_set_level(CLOCK_GPIO, 1);
-                vTaskDelay(10 / portTICK_PERIOD_MS);
                 gpio_set_level(CLOCK_GPIO, 0);
+                vTaskDelay(10 / portTICK_PERIOD_MS);
+                gpio_set_level(CLOCK_GPIO, 1);
                 clkCnt = 1;
+                vTaskDelay(10 / portTICK_PERIOD_MS);
 
                 // Deactivate Reset
                 gpio_set_level(RESET_GPIO, 1);
@@ -590,9 +591,10 @@ static void cpu_task(void *arg)
                 break;
             case 'x':
                 clockEnabled = false;
-                gpio_set_level(CLOCK_GPIO, 1);
-                vTaskDelay(10 / portTICK_PERIOD_MS);
                 gpio_set_level(CLOCK_GPIO, 0);
+                vTaskDelay(10 / portTICK_PERIOD_MS);
+                // clock = clock == 1 ? 0 : 1;
+                gpio_set_level(CLOCK_GPIO, 1);
                 clkCnt++;
 
                 printf("Clocked %d\n", clkCnt);
