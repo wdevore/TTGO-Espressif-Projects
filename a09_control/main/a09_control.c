@@ -503,7 +503,7 @@ static void clock_task(void *arg)
     for (;;) {
         if (clockEnabled) {
             gpio_set_level(CLOCK_GPIO, 0);
-            vTaskDelay(10 / portTICK_PERIOD_MS);
+            vTaskDelay(1 / portTICK_PERIOD_MS);
             gpio_set_level(CLOCK_GPIO, 1);
             vTaskDelay(10 / portTICK_PERIOD_MS);
         } else 
